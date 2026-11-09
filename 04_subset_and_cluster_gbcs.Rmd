@@ -72,29 +72,20 @@ Make and plot module scores
 ```{r plot-gbc-markers}
 # Plot established marker panels to interpret the GBC-specific clusters.
 marker_list <- list(
-  Basal_RE                = c("Krt17", "Reg3g"),
-  Bowmans                 = c("Sox9", "Wfdc18"),
-  Goblet_cells            = c("Tff2", "Muc5b"),
-  OB                      = c("Dcc", "Pou3f2", "Igfbpl1", "Dlx2"),
-  Olf_Ensheathing         = c("Npy", "S100b"),
-  Odontogenic_Epithelium  = c("Amelx", "Enam"),
-  Fibroblasts             = c("Col1a1", "Col1a2"),
-  Macrophages             = c("C1qb", "Cd68"),
-  Monocytes               = c("S100a8", "S100a9", "Il1b"),
-  Basal_OE                = c("Trp63", "Krt5"),
-  GBC                     = c("Ascl1", "Kit"),
-  INP                     = c("Neurod1", "Neurog1"),
-  iOSN                    = c("Ebf2", "Gap43"),
-  mOSN                    = c("Omp","Adcy3"),
-  Sus                     = c("Cyp2a5", "Il33"),
-  Tuft_Cells              = c("Ascl3", "Foxi1"))
+  "GBC" = c("Kit", "Ascl1", "Lgr5"),
+  "Sus" = c("Cyp2a5", "Sec14l3", "Il33"),
+  "Basal_OE" = c("Trp63", "Krt5", "Nrcam"),
+  "Microvillus" = c("Ascl3", "Foxi1", "Pou2f3"),
+  "Bowmans" = c("Sox9", "Wfdc18", "Aqp5")
+)
 
-add_module_scores_and_plot(
+set.seed(1)
+gbc_subsetb <- add_module_scores_and_plot(
   seurat_obj = gbc_subsetb,
   marker_list = marker_list,
   cluster_resolution = "RNA_snn_res.0.7",
   min_genes_required = 2, 
-  ctrl = 5,
+  ctrl = 100,
   feature_plot_color_low = "white",
   feature_plot_color_high = "blue",
   reduction.name = "umap")
@@ -246,12 +237,19 @@ Where are marker genes expressed?
 ```{r label-gbc-clusters}
 # Assign the established biological labels and colors to the final GBC clusters.
 
-# Define marker-gene pairs.
-plotgenessss <- list(
-    CYP = c("Cyp2a5", "Sec14l3"),
-    HBC = c("Krt5", "Trp63"),
-    MV  = c("Pou2f3", "Ascl3"),
-    BG  = c("Sox9", "Wfdc18")
+# Define the original two-gene panels and revised three-gene modules.
+fig3c_modules_2gene <- list(
+  "Sus" = c("Cyp2a5", "Il33"),
+  "Basal_OE" = c("Krt5", "Trp63"),
+  "Microvillus" = c("Pou2f3", "Ascl3"),
+  "Bowmans" = c("Sox9", "Wfdc18")
+)
+
+fig3c_modules_3gene <- list(
+  "Sus" = c("Cyp2a5", "Il33", "Sec14l3"),
+  "Basal_OE" = c("Krt5", "Trp63", "Nrcam"),
+  "Microvillus" = c("Pou2f3", "Ascl3", "Foxi1"),
+  "Bowmans" = c("Sox9", "Wfdc18", "Aqp5")
 )
 
 # Calculate shared UMAP crop limits while trimming only extreme outliers.
@@ -265,21 +263,73 @@ umap_limits <- as.data.frame(
         ymax = quantile(umap_2, 0.99)
     )
 
-# Plot each marker pair with the same crop, theme, and layout.
+# Plot each marker module with the same crop, theme, and layout.
+create_fig3c_feature_plot <- function(seurat_obj, gene, show_umap_axes = FALSE) {
+  p <- FeaturePlot(
+    seurat_obj,
+    reduction = "umap",
+    features = gene,
+    order = TRUE,
+    min.cutoff = 0.5
+  ) +
+    ggtitle(gene) +
+    coord_cartesian(
+      xlim = c(umap_limits$xmin, umap_limits$xmax),
+      ylim = c(umap_limits$ymin, umap_limits$ymax)
+    ) +
+    theme(
+      plot.title = element_text(size = 12, face = "bold", hjust = 0.5),
+      legend.position = "right",
+      legend.key.size = unit(0.3, "cm"),
+      legend.text = element_text(size = 7),
+      legend.title = element_text(size = 8)
+    )
 
-# Create one two-gene panel for each marker group.
-all_plots <- lapply(plotgenessss, function(genes) {
-    create_gene_pair_plot(gbc_subset_noNeur, genes)
-})
+  if (show_umap_axes) {
+    p <- p + theme_umap_arrows(x_label = "UMAP_1", y_label = "UMAP_2")
+  } else {
+    p <- p + theme(
+      axis.title = element_blank(),
+      axis.text = element_blank(),
+      axis.ticks = element_blank(),
+      axis.line = element_blank()
+    )
+  }
 
-# Stack the marker-group panels vertically.
-final_plot <- cowplot::plot_grid(
-    plotlist = all_plots,
+  p
+}
+
+make_fig3c <- function(module_gene_list) {
+  rows <- lapply(seq_along(module_gene_list), function(row_index) {
+    genes <- module_gene_list[[row_index]]
+    plots <- lapply(seq_along(genes), function(column_index) {
+      create_fig3c_feature_plot(
+        gbc_subset_noNeur,
+        genes[[column_index]],
+        show_umap_axes = row_index == 1 && column_index == 1
+      )
+    })
+
+    cowplot::plot_grid(
+      plotlist = plots,
+      ncol = length(genes),
+      align = "hv",
+      axis = "tblr"
+    )
+  })
+
+  cowplot::plot_grid(
+    plotlist = rows,
     ncol = 1,
     align = "v"
-)
+  )
+}
 
-final_plot
+fig3c_2gene <- make_fig3c(fig3c_modules_2gene)
+fig3c_3gene <- make_fig3c(fig3c_modules_3gene)
+
+fig3c_2gene
+fig3c_3gene
 ```
 
 ```{r prepare-gbc-umap-data}
@@ -290,14 +340,14 @@ module_colors <- c(
   "Sus_Features1" = "#ffff33",
   "Bowmans_Features1" = "#f781bf",
   "Basal_OE_Features1" = "#a65628",
-  "Tuft_Cells_Features1" = "#ff7f00",
+  "Microvillus_Features1" = "#ff7f00",
   "GBC_Features1" = "#984ea3"
 )
 module_labels <- c(
   "Sus_Features1" = "Sustentacular",
   "Bowmans_Features1" = "Bowmans",
   "Basal_OE_Features1" = "HBC",
-  "Tuft_Cells_Features1" = "Microvillus",
+  "Microvillus_Features1" = "Microvillus",
   "GBC_Features1" = "GBC"
 )
 modules <- names(module_colors)
